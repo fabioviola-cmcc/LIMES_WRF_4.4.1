@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+
+<config_pes>
+
+  <!-- For any grid -->
+  <grid name="any">
+
+    <!-- On any machine -->
+    <mach name="any">
+
+      <!-- Processors configuration for WRFONLY compset -->
+      <pes pesize="any" compset="WRFONLY">
+        <comment>Processors configuration for WRFONLY compset</comment>
+
+	<!-- 
+	     The ntasks section specifies the number of tasks (or MPI
+	     processes) for each component of the model. In this case,
+	     the only component is set to -1. The negative value means
+	     that the number of tasks for each component will be equal
+	     to the number of nodes available in the computing
+	     environment. Example: if our component is invoked through
+	     bsub asking for 4 nodes, having -1 in this setting, each
+	     component (we have only one here) will use 4 tasks, one
+	     per node.
+	-->	
+        <ntasks>
+          <ntasks_atm>-1</ntasks_atm>
+        </ntasks>
+
+	<!-- 
+	     The <nthrds> section specifies the number of threads for
+	     each component of the model. In this case, we are setting
+	     72 as the number of threads.
+	-->
+        <nthrds>
+          <nthrds_atm>72</nthrds_atm>
+        </nthrds>
+
+	<!-- 
+	     The rootpe section specifies the root processor element
+	     for each component of the model. In this case, our
+	     component is set to 0, meaning that the tasks for wrf
+	     will start being assigned from the first available
+	     processor.
+	-->
+        <rootpe>
+          <rootpe_atm>0</rootpe_atm>
+        </rootpe>
+      </pes>
+    </mach>
+  </grid>
+
+</config_pes>
