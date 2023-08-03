@@ -1,68 +1,141 @@
 #!/usr/bin/env python3
 
 """
-Module to compile wrf
+buildlib
+
+This script is used to build WRF in the context of the CIME platform.
+Developed by Fabio Viola, Last update on 2023/08/03.
 """
 
-#################################################
+#########################################################
 #
 # requirements
 #
-#################################################
+#########################################################
 
-import os, shutil, sys, glob, stat, filecmp
+# global reqs
+import os
+import sys
+import shutil
 import subprocess
-import pdb
 
-# read the environment variable CIMEROOT in order to set paths to other libraries
-CIMEROOT = os.environ.get("CIMEROOT")
-if CIMEROOT is None:
-    raise SystemExit("ERROR: must set CIMEROOT environment variable")
-sys.path.append(os.path.join(CIMEROOT, "scripts", "Tools"))
-
-# other requirements
+# local reqs
+cimeroot = os.getenv("CIMEROOT")
+sys.path.append(os.path.join(cimeroot,"scripts","Tools"))
 from standard_script_setup import *
+from CIME.buildlib import build_cime_component_lib, parse_input
 from CIME.case import Case
-from CIME.utils import expect
-from CIME.buildnml import create_namelist_infile, parse_input
-from CIME.utils import run_cmd
+from CIME.utils import run_cmd, expect
 
 
-#################################################
+#########################################################
 #
-# configuration of the logger
+# buildlib
 #
-#################################################
+#########################################################
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def buildlib(bldroot, libroot, caseroot, compname=None):
 
+    logging.info("[buildlib][buildlib] === Method buildlib starting...")
 
-#################################################
-#
-# _build_wrf
-#
-#################################################
+    # clear the list of handlers already defined
+    # to avoid duplicated log entries
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    logging.getLogger().handlers.clear()
+    logging.getLogger().addHandler(stdout_handler)
+    l = logging.getLogger("root")
 
-def _build_wrf():
+    # debug information
+    l.info("[buildlib][buildlib] === Method buildlib starting...")
 
-    # debug print
-    logging.info("[buildlib][_build_wrf] === Yet to implement...")
+    # check on compname
+    l.info("[buildlib][buildlib] === Checking compname...")    
+    if compname is None:
+        thisdir = os.path.dirname(os.path.abspath(__file__))
+        path, dir1 = os.path.split(thisdir)
+        _, dir2 = os.path.split(path)
+        if dir1 == "cime_config":
+            compname = dir2
+        else:
+            compname = dir1.split('.')[1]
 
-    pass
+    # create an instance of the Case class
+    case = Case(caseroot)
+                        
+    # debug information
+    l.info("[buildlib][_build_wrf] ==========================================")
+    l.info("[buildlib][_build_wrf] === Short summary of the current WRF configuration:")
+    l.info("[buildlib][_build_wrf] === CASEROOT: %s" % case)
+    l.info("[buildlib][_build_wrf] === BLDROOT: %s" % bldroot)
+    l.info("[buildlib][_build_wrf] === LIBROOT: %s" % libroot)
+    l.info("[buildlib][_build_wrf] === CASETOOLS %s" % case.get_value("CASETOOLS"))
+    l.info("[buildlib][_build_wrf] === SRCROOT %s" % case.get_value("SRCROOT"))
+    l.info("[buildlib][_build_wrf] === GMAKE_J %s" % case.get_value("GMAKE_J"))
+    l.info("[buildlib][_build_wrf] === GMAKE %s" % case.get_value("GMAKE"))
+    l.info("[buildlib][_build_wrf] === MACH %s" % case.get_value("MACH"))
+    l.info("[buildlib][_build_wrf] === COMPILER %s" % case.get_value("COMPILER"))
+    l.info("[buildlib][_build_wrf] === CASE %s" % case.get_value("CASE"))
+    l.info("[buildlib][_build_wrf] === NINST_VALUE %s" % case.get_value("NINST_VALUE"))
+    l.info("[buildlib][_build_wrf] === BUILD_THREADED %s" % case.get_value("BUILD_THREADED"))
+    l.info("[buildlib][_build_wrf] === SHAREDLIBROOT %s" % case.get_value("SHAREDLIBROOT"))
+    l.info("[buildlib][_build_wrf] === MPILIB %s" % case.get_value("MPILIB"))
+    l.info("[buildlib][_build_wrf] === DEBUG %s" % case.get_value("DEBUG"))         
+
+    # set paths
+    mach = case.get_value("MACH")
+    srcroot = case.get_value("SRCROOT")
+    wrfDir = os.path.join(os.path.join(srcroot,"components","wrf"))
+    confWrfTemplate = os.path.join(os.path.join(srcroot,"components","wrf", "configure.wrf_TEMPLATE_%s" % mach))
+    confWrfTemplate_generic = os.path.join(os.path.join(srcroot,"components","wrf", "configure.wrf_TEMPLATE"))
+    confWrf = os.path.join(os.path.join(srcroot,"components","wrf", "configure.wrf"))
+    compileScript = os.path.join(os.path.join(srcroot,"components","wrf", "compile"))
     
+    # copy the configure.wrf_TEMPLATE to configure.wrf
+    try:
+        l.info("[buildlib][_build_wrf] === Copying %s to configure.wrf" % confWrfTemplate)         
+        shutil.copy(confWrfTemplate, confWrf)
+    except FileNotFoundError:
+        l.info("[buildlib][_build_wrf] === %s not found. Falling back to generic configure.wrf " % confWrfTemplate)         
+        shutil.copy(confWrfTemplate_generic, confWrf)        
+    except shutil.SameFileError:
+        l.info("[buildlib][_build_wrf] === configure.wrf is unchanged")         
 
-#################################################
-#
-# buildnml
-#
-#################################################
+    # compile wrf
+    cmd = "%s -j 1 em_real" % compileScript
+    rc, out, err = run_cmd(cmd, from_dir=wrfDir, verbose=True)
+    logging.info("[buildlib][_build_wrf] === %s: \n\n output:\n %s \n\n err:\n\n%s\n" % (cmd, out, err))
 
+    # check the exit status of the compilation
+    expect(rc == 0, "Compilation of WRF failed with rc: %s" % rc)
+
+    
+#########################################################
+#
+# _main_func
+#
+#########################################################    
+    
+def _main_func(args):
+
+    # debug information
+    logging.info("[buildlib][_main_func] === Method _main_func starting...")
+
+    # parse input
+    caseroot, libroot, bldroot = parse_input(sys.argv)
+
+    # invoke buildlib
+    buildlib(bldroot, libroot, caseroot)
+
+
+#########################################################
+#
+# __main__
+#
+#########################################################
+        
 if __name__ == "__main__":
 
-    # debug print
-    logging.info("[buildlib][__main__] === Starting...")
-    
-    # invoke _build_wrf()
-    logging.info("[buildlib][__main__] === Invoking _build_wrf()...")
-    _build_wrf()
+    # debug information
+    logging.info("[buildlib][__main__] === __main__ starting...")    
+    _main_func(sys.argv)
+
