@@ -11,9 +11,11 @@ WRF namelist creator
 #################################################
 
 import os, shutil, sys, glob, stat, filecmp
+from datetime import datetime, timedelta
 from netCDF4 import Dataset
 import subprocess
 import pdb
+import re
 
 # read the environment variable CIMEROOT in order to set paths to other libraries
 CIMEROOT = os.environ.get("CIMEROOT")
@@ -27,6 +29,115 @@ from CIME.case import Case
 from CIME.utils import expect
 from CIME.buildnml import create_namelist_infile, parse_input
 from CIME.utils import run_cmd
+
+
+#################################################
+#
+# UnsupportedFeatureException
+#
+#################################################
+
+class UnsupportedFeatureException(Exception):
+    def __init__(self, message="This feature has not been implemented yet!"):
+        self.message = message
+        super().__init__(self.message)
+
+        
+#################################################
+#
+# dict_to_namelist
+#
+#################################################
+
+def dict_to_namelist(d):
+    namelist_str = ""
+
+    for group_name, group_data in d.items():
+        namelist_str += f"&{group_name}\n"
+        for key, value in group_data.items():
+            namelist_str += f"  {key} = {value}\n"
+        namelist_str += "/\n"
+
+    return namelist_str
+
+
+#################################################
+#
+# namelist_to_dict
+#
+#################################################
+
+def namelist_to_dict(namelist_str):
+
+    namelist_data = {}
+    current_group = None
+
+    # Remove comments and leading/trailing whitespaces
+    namelist_str = re.sub(r"!.*", "", namelist_str).strip()
+
+    # Split the namelist into groups
+    groups = namelist_str.split("/")
+
+    for group in groups:
+        # Skip empty groups
+        if not group.strip():
+            continue
+
+        # Extract the group name
+        group_name_match = re.match(r"^\s*&(\w+)\s*", group)
+        if group_name_match:
+            current_group = group_name_match.group(1)
+            namelist_data[current_group] = {}
+        else:
+            raise ValueError("Invalid group name in namelist: " + group)
+
+        # Parse key-value pairs within the group
+        key_value_matches = re.findall(r"(\w+)\s*=\s*([^/\n]+)", group)
+        for key, value in key_value_matches:
+            value = value.strip()
+            try:
+                # Try converting the value to an int or float
+                value = int(value)
+            except ValueError:
+                try:
+                    value = float(value)
+                except ValueError:
+                    # If the value is a string, remove leading/trailing quotes
+                    value = value.strip("'\"")
+            namelist_data[current_group][key] = value
+
+    return namelist_data
+
+
+#################################################
+#
+# merge dictionaries
+#
+#################################################
+
+def mergeDicts(d1, d2):
+
+    # create a copy of d1
+    d3 = d1
+    
+    # iterate on the first level of d2 and check if its keys are already in d2
+    for k in d2.keys():
+        
+        if not k in d3.keys():
+            
+            # in this branch of the if, we know that the key read from d2
+            # is not already included in d1, so we can copy the whole element
+            d3[k] = d2[k]
+
+        else:
+
+            # in this other branch, we have to iterate over all the elements
+            # of d2 and add them manually to d1
+            for kk in d2[k].keys():
+                d3[k][kk] = d2[k][kk]
+
+    # return the newly created dictionary
+    return d3
 
 
 #################################################
@@ -48,16 +159,166 @@ logger = logging.getLogger(__name__)
 def buildnml(case, caseroot, compname):
 
     # debug print
-    logger.info("[buildnml][buildnml] === Yet to develop...")
+    logger.info("[buildnml][buildnml] === buildnml starting...")
 
-    # TODO:
-    # this code must be implemented and to guide this process
-    # it is important to answer these questions:
-    # - which namelists should we build for WRF?
-    # - where should we build our namelists?
-    # - where do we take the inputs for our namelists?
+    #################################################
+    #
+    # read case information
+    #
+    #################################################
+
+    cimeroot = case.get_value("CIMEROOT")
+    srcroot = case.get_value("SRCROOT")
+    din_loc_root = case.get_value("DIN_LOC_ROOT")
+    atm_grid = case.get_value("ATM_GRID")
+    rundir = case.get_value("RUNDIR")
+
     
-        
+    #################################################
+    #
+    # initialise the dict_namelist
+    #
+    #################################################
+    
+    dict_nml = {
+        "time_control": {},
+        "domains": {},
+        "physics": {},
+        "noha_mp": {},
+        "fdda": {},
+        "dynamics": {},
+        "bdy_control": {},
+        "grib2": {}        
+    }
+    
+    #################################################
+    #
+    # time_control section
+    #
+    #################################################
+    
+    # get options from CIME configuration
+    stop_option = case.get_value("STOP_OPTION")
+    stop_date = case.get_value("STOP_DATE")    
+    stop_n = case.get_value("STOP_N")    
+    run_startdate = case.get_value("RUN_STARTDATE")
+
+    # start datetime of the simulation
+    start_year, start_month, start_day = map(int, run_startdate.split("-"))
+    dict_nml["time_control"]["start_year"] = start_year
+    dict_nml["time_control"]["start_month"] = start_month
+    dict_nml["time_control"]["start_day"] = start_day
+    dict_nml["time_control"]["start_hour"] = "00"
+    dict_nml["time_control"]["start_minute"] = "00"
+    dict_nml["time_control"]["start_second"] = "00"
+    
+    # check if the limit is expressed in days or hours
+    if stop_option == "ndays":
+        days = stop_n
+        hours = 0
+    elif stop_option == "nhours": 
+        days = 0       
+        hours = stop_n
+    else:
+        logging.error("[buildnml][buildnml] === %s yet to develop..." % stop_option)
+        raise UnsupportedFeatureException("stop_option=%s yet to develop in LIMES..." % stop_option)
+    minutes = 0
+    seconds = 0        
+
+    # set run duration
+    dict_nml["time_control"]["run_days"] = days
+    dict_nml["time_control"]["run_hours"] = hours
+    dict_nml["time_control"]["run_minutes"] = minutes
+    dict_nml["time_control"]["run_seconds"] = seconds
+
+    # end datetime of the simulation
+    start_date = datetime(start_year, start_month, start_day, 0, 0, 0)
+    time_interval = timedelta(days=days, hours=hours, minutes=minutes)
+    end_date = (start_date + time_interval).strftime("%Y-%m-%d")    
+    end_year, end_month, end_day = end_date.split("-")
+    dict_nml["time_control"]["end_year"] = end_year
+    dict_nml["time_control"]["end_month"] = end_month
+    dict_nml["time_control"]["end_day"] = end_day
+    dict_nml["time_control"]["end_hour"] = "00"
+    dict_nml["time_control"]["end_minute"] = "00"
+    dict_nml["time_control"]["end_second"] = "00"
+
+    # other time_control values
+    dict_nml["time_control"]["interval_seconds"] = 21600   
+    dict_nml["time_control"]["input_from_file"] = ".true."
+    dict_nml["time_control"]["history_interval"] = 360
+
+    # i/o format (2 = NetCDF, 4 = Binary)
+    dict_nml["time_control"]["io_form_history"] = 2
+    dict_nml["time_control"]["io_form_restart"] = 2
+    dict_nml["time_control"]["io_form_input"] = 2
+    dict_nml["time_control"]["io_form_boundary"] = 2
+    dict_nml["time_control"]["io_form_auxinput2"] = 2
+    dict_nml["time_control"]["io_form_auxhist3"] = 2
+    dict_nml["time_control"]["io_form_auxinput4"] = 2
+
+    # history and restart
+    dict_nml["time_control"]["history_outname"] = "%s/wrfout_d<domain>_<date>" % (rundir)
+    dict_nml["time_control"]["frames_per_outfile"] = 4
+    dict_nml["time_control"]["auxhist3_outname"] = "%s/wrfxtrm_d<domain>_<date>" % (rundir)
+    dict_nml["time_control"]["auxhist3_interval"] = 1440
+    dict_nml["time_control"]["frames_per_auxhist3"] = 1
+    dict_nml["time_control"]["restart"] = ".true."
+    dict_nml["time_control"]["restart_interval"] = 43200
+    dict_nml["time_control"]["write_hist_at_0h_rst"] = ".true."
+    dict_nml["time_control"]["output_diagnostics"] = 1      
+    dict_nml["time_control"]["auxinput4_inname"] = "%s/wrflowinp_d<domain>" % (rundir)
+    dict_nml["time_control"]["auxinput4_interval"] = 360
+
+
+    #################################################
+    #
+    # merge users' custom namelist
+    #
+    #################################################
+    
+    # read the namelist with local users' preferences
+    user_nml_file = "%s/user_nl_wrf" % (caseroot)
+    with open(user_nml_file, "r") as f:
+        user_nml_str = f.read()
+    user_dict_nml = namelist_to_dict(user_nml_str)
+
+    # merging the global and the user dict_namelists, then convert it to namelist
+    final_dict_nml = mergeDicts(dict_nml, user_dict_nml)
+    final_nml = dict_to_namelist(final_dict_nml)
+
+    #################################################
+    #
+    # write to file
+    #
+    #################################################
+    
+    # output the namelist to file
+    nml_file = "%s/namelist.input" % (rundir)
+    logging.info("[buildlib][_main_func] === Writing namelist to %s" % nml_file)
+    with open(nml_file, "w") as f:
+        f.write(final_nml)
+    
+    
+#################################################
+#
+# _main_func
+#
+#################################################
+    
+def _main_func(args):
+
+    # debug information
+    logging.info("[buildlib][_main_func] === Method _main_func starting...")
+
+    # parse input
+    caseroot, libroot, bldroot = parse_input(sys.argv)
+
+    # invoke buildnml
+    logging.info("[buildlib][_main_func] === Invoking buildnml...")
+    buildnml(case, caseroot, "wrf")
+    
+    
 #################################################
 #
 # main
@@ -66,15 +327,8 @@ def buildnml(case, caseroot, compname):
 
 if __name__ == "__main__":
 
-    # debug print
-    logger.info("[buildnml][__main__] === Starting...")
-    
-    # get the caseroot
-    caseroot = parse_input(sys.argv)
-    with Case(caseroot, read_only=False) as case:
-
-        # invoke the buildml function
-        logger.info("[buildnml][__main__] === Invoking buildnml...")
-        buildnml(case, caseroot, "wrf")
+    # invoke the buildml function
+    logger.info("[buildnml][__main__] === Invoking _main_func...")
+    _main_func(sys.argv)
 
 
