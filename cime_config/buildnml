@@ -188,7 +188,8 @@ def buildnml(case, caseroot, compname):
         "fdda": {},
         "dynamics": {},
         "bdy_control": {},
-        "grib2": {}        
+        "grib2": {},
+        "namelist_quilt": {}
     }
     
     #################################################
@@ -225,30 +226,26 @@ def buildnml(case, caseroot, compname):
     minutes = 0
     seconds = 0        
 
+    # determine start and end date, time interval
+    start_date = datetime(start_year, start_month, start_day, 0, 0, 0)
+    time_interval = timedelta(days=days, hours=hours, minutes=minutes)
+    end_date = (start_date + time_interval).strftime("%Y-%m-%d")    
+    end_year, end_month, end_day = end_date.split("-")
+    
     # set run duration
     dict_nml["time_control"]["run_days"] = days
     dict_nml["time_control"]["run_hours"] = hours
     dict_nml["time_control"]["run_minutes"] = minutes
     dict_nml["time_control"]["run_seconds"] = seconds
-
-    # end datetime of the simulation
-    start_date = datetime(start_year, start_month, start_day, 0, 0, 0)
-    time_interval = timedelta(days=days, hours=hours, minutes=minutes)
-    end_date = (start_date + time_interval).strftime("%Y-%m-%d")    
-    end_year, end_month, end_day = end_date.split("-")
     dict_nml["time_control"]["end_year"] = end_year
     dict_nml["time_control"]["end_month"] = end_month
     dict_nml["time_control"]["end_day"] = end_day
     dict_nml["time_control"]["end_hour"] = "00"
     dict_nml["time_control"]["end_minute"] = "00"
     dict_nml["time_control"]["end_second"] = "00"
-
-    # other time_control values
     dict_nml["time_control"]["interval_seconds"] = 21600   
     dict_nml["time_control"]["input_from_file"] = ".true."
     dict_nml["time_control"]["history_interval"] = 360
-
-    # i/o format (2 = NetCDF, 4 = Binary)
     dict_nml["time_control"]["io_form_history"] = 2
     dict_nml["time_control"]["io_form_restart"] = 2
     dict_nml["time_control"]["io_form_input"] = 2
@@ -256,8 +253,6 @@ def buildnml(case, caseroot, compname):
     dict_nml["time_control"]["io_form_auxinput2"] = 2
     dict_nml["time_control"]["io_form_auxhist3"] = 2
     dict_nml["time_control"]["io_form_auxinput4"] = 2
-
-    # history and restart
     dict_nml["time_control"]["history_outname"] = "%s/wrfout_d<domain>_<date>" % (rundir)
     dict_nml["time_control"]["frames_per_outfile"] = 4
     dict_nml["time_control"]["auxhist3_outname"] = "%s/wrfxtrm_d<domain>_<date>" % (rundir)
@@ -270,7 +265,124 @@ def buildnml(case, caseroot, compname):
     dict_nml["time_control"]["auxinput4_inname"] = "%s/wrflowinp_d<domain>" % (rundir)
     dict_nml["time_control"]["auxinput4_interval"] = 360
 
+    #################################################
+    #
+    # domains section
+    #
+    #################################################
 
+    dict_nml["domains"]["time_step"] = 24
+    dict_nml["domains"]["time_step_fract_num"] = 0
+    dict_nml["domains"]["time_step_fract_den"] = 1
+    dict_nml["domains"]["max_dom"] = 1
+    dict_nml["domains"]["e_we"] = 289
+    dict_nml["domains"]["e_sn"] = 403
+    dict_nml["domains"]["e_vert"] = 60
+    dict_nml["domains"]["p_top_requested"] = 5000
+    dict_nml["domains"]["num_metgrid_levels"] = 26
+    dict_nml["domains"]["num_metgrid_soil_levels"] = 4
+    dict_nml["domains"]["dx"] = 6000
+    dict_nml["domains"]["dy"] = 6000
+    dict_nml["domains"]["grid_id"] = 1
+    dict_nml["domains"]["parent_id"] = 0
+    dict_nml["domains"]["i_parent_start"] = 1
+    dict_nml["domains"]["j_parent_start"] = 1
+    dict_nml["domains"]["parent_grid_ratio"] = 1
+    dict_nml["domains"]["parent_time_step_ratio"] = 1
+    dict_nml["domains"]["feedback"] = 1
+    dict_nml["domains"]["smooth_option"] = 0
+    dict_nml["domains"]["eta_levels"] = [
+        1.000, 0.9973, 0.9947, 0.9921, 0.9895,
+        0.9869, 0.9843, 0.9816, 0.979, 0.97645,
+        0.9739, 0.9687, 0.9635, 0.956, 0.9485,
+        0.9389, 0.9294, 0.9182, 0.907, 0.8944,
+        0.8818, 0.8543, 0.825, 0.7945, 0.763,
+        0.7311, 0.699, 0.6669, 0.6352, 0.604,
+        0.5735, 0.5437, 0.5148, 0.4869, 0.4599,
+        0.4339, 0.4089, 0.3848, 0.3617, 0.3394,
+        0.3179, 0.2972, 0.2772, 0.2578, 0.239,
+        0.2207, 0.2028, 0.1854, 0.1682, 0.1514,
+        0.1323, 0.1159, 0.0999, 0.0843, 0.069,
+        0.0542, 0.0397, 0.0257, 0.0122, 0.000
+    ]
+    
+    #################################################
+    #
+    # physics section
+    #
+    #################################################
+
+    dict_nml["physics"]["physics_suite"] = 'CONUS'
+    dict_nml["physics"]["mp_physics"] = 8
+    dict_nml["physics"]["cu_physics"] = 1
+    dict_nml["physics"]["ra_lw_physics"] = 4
+    dict_nml["physics"]["ra_sw_physics"] = 4
+    dict_nml["physics"]["cam_abs_freq_s"] = 21600
+    dict_nml["physics"]["levsiz"] = 59
+    dict_nml["physics"]["paerlev"] = 29
+    dict_nml["physics"]["cam_abs_dim1"] = 4
+    dict_nml["physics"]["cam_abs_dim2"] = 38
+    dict_nml["physics"]["o3input"] = 2
+    dict_nml["physics"]["aer_opt"] = 1
+    dict_nml["physics"]["alevsiz"] = 12
+    dict_nml["physics"]["no_src_types"] = 6
+    dict_nml["physics"]["bl_pbl_physics"] = 1
+    dict_nml["physics"]["sf_sfclay_physics"] = 11
+    dict_nml["physics"]["sf_surface_physics"] = 2
+    dict_nml["physics"]["radt"] = 10
+    dict_nml["physics"]["bldt"] = 0
+    dict_nml["physics"]["cudt"] = 5
+    dict_nml["physics"]["isfflx"] = 1
+    dict_nml["physics"]["ifsnow"] = 1
+    dict_nml["physics"]["icloud"] = 1
+    dict_nml["physics"]["surface_input_source"] = 1
+    dict_nml["physics"]["num_soil_layers"] = 4
+    dict_nml["physics"]["num_land_cat"] = 24
+    dict_nml["physics"]["sf_urban_physics"] = 0
+    dict_nml["physics"]["sst_update"] = 1
+
+    #################################################
+    #
+    # dynamics section
+    #
+    ###############################################    
+
+    dict_nml["dynamics"]["w_damping"] = 0
+    dict_nml["dynamics"]["diff_opt"] = 1
+    dict_nml["dynamics"]["km_opt"] = 4
+    dict_nml["dynamics"]["diff_6th_opt"] = 2
+    dict_nml["dynamics"]["diff_6th_factor"] = 0.12
+    dict_nml["dynamics"]["base_temp"] = 290.
+    dict_nml["dynamics"]["damp_opt"] = 0
+    dict_nml["dynamics"]["zdamp"] = 5000.
+    dict_nml["dynamics"]["dampcoef"] = 0.2
+    dict_nml["dynamics"]["khdif"] = 0
+    dict_nml["dynamics"]["kvdif"] = 0
+    dict_nml["dynamics"]["non_hydrostatic"] = True
+    dict_nml["dynamics"]["moist_adv_opt"] = 1
+    dict_nml["dynamics"]["scalar_adv_opt"] = 1
+
+    #################################################
+    #
+    # bdy_control section
+    #
+    ###############################################    
+
+    dict_nml["bdy_control"]["spec_bdy_width"] = 5
+    dict_nml["bdy_control"]["spec_zone"] = 1
+    dict_nml["bdy_control"]["relax_zone"] = 4
+    dict_nml["bdy_control"]["specified"] = True
+    dict_nml["bdy_control"]["nested"] = False
+
+    #################################################
+    #
+    # namelist_quilt section
+    #
+    ###############################################    
+
+    dict_nml["namelist_quilt"]["nio_tasks_per_group"] = 0
+    dict_nml["namelist_quilt"]["nio_groups"] = 1
+    
     #################################################
     #
     # merge users' custom namelist
